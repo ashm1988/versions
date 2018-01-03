@@ -175,16 +175,26 @@ def dbupdate(data):
         instance_id = 1
     logging.debug("Set next instance_id to %d", instance_id)
 
-    statements = "SET @tday=curdate(); " \
-                 "INSERT INTO `archive` " \
+    # statements = "SET @tday=curdate(); " \
+    #              "INSERT INTO `archive` " \
+    #              "(`id`,`date`,`server`,`instance`,`product`,`core`,`otl`,`licence`,`adapter`,`frapi`,`fix50`, " \
+    #              "`fix50sp1`,`fix42`) " \
+    #              "SELECT `id`,@tday,`server`,`instance`,`product`,`core`,`otl`,`licence`,`adapter`, " \
+    #              "`frapi`,`fix50`,`fix50sp1`,`fix42` " \
+    #              "FROM `current`;"
+    statements = "INSERT INTO `archive` " \
                  "(`id`,`date`,`server`,`instance`,`product`,`core`,`otl`,`licence`,`adapter`,`frapi`,`fix50`, " \
                  "`fix50sp1`,`fix42`) " \
-                 "SELECT `id`,@tday,`server`,`instance`,`product`,`core`,`otl`,`licence`,`adapter`, " \
+                 "SELECT `id`,'2018-01-03',`server`,`instance`,`product`,`core`,`otl`,`licence`,`adapter`, " \
                  "`frapi`,`fix50`,`fix50sp1`,`fix42` " \
                  "FROM `current`;"
 
-    for statement in cur.execute(statements, multi=True):
-        pass
+    cur.execute(statements, multi=True)
+    print cur.fetchwarnings()
+    # for y in  x:
+    # #     print y
+    # for statement in cur.execute(statements, multi=True):
+    #     pass
 
     logging.debug("Update database with details")
     cur.execute("INSERT INTO `current` (`id`) VALUES ('%s')" % instance_id)
@@ -193,6 +203,7 @@ def dbupdate(data):
         logging.debug("UPDATE `current` SET `%s`='%s' WHERE `id` = %d sent to the database", result, data[result][2], instance_id)
 
     cnx.commit()
+    logging.debug("committing data")
     cur.close()
     cnx.close()
 
