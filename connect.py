@@ -174,7 +174,7 @@ def dbupdate(data):
     cur.execute("INSERT INTO `current` (`id`) VALUES ('%s')" % instanceid)
     for result in data:
         cur.execute("UPDATE `current` SET `%s`='%s' WHERE `id` = %s" % (result, data[result][2], instanceid))
-
+        logging.debug("UPDATE `current` SET `%s`='%s' WHERE `id` = %d sent to the database", result, data[result][2], instanceid)
 
     cnx.commit()
     cur.close()
