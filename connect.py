@@ -6,7 +6,6 @@ import logging
 import re
 import mysql.connector
 
-
 logging.basicConfig(format='%(asctime)s: %(levelname)s: %(message)s', level=logging.DEBUG)
 host = '172.28.101.10'
 port = 10218
@@ -118,6 +117,7 @@ def dbupdate(data):
         'password': '',
         'host': '127.0.0.1',
         'database': 'versions',
+        'autocommit': True,
     }
 
     tables = {}
@@ -156,7 +156,9 @@ def dbupdate(data):
     )
 
     cnx = mysql.connector.connect(**config)
+    cnx.get_warnings = True
     cur = cnx.cursor(buffered=False)
+
 
     logging.debug("Create tables if they do not already exist")
     for table in tables:
@@ -171,7 +173,18 @@ def dbupdate(data):
         instance_id = max(count) + 1
     else:
         instance_id = 1
-    logging.debug("Set next instanceid to %d", instance_id)
+    logging.debug("Set next instance_id to %d", instance_id)
+
+    statements = "SET @tday=curdate(); " \
+                 "INSERT INTO `archive` " \
+                 "(`id`,`date`,`server`,`instance`,`product`,`core`,`otl`,`licence`,`adapter`,`frapi`,`fix50`, " \
+                 "`fix50sp1`,`fix42`) " \
+                 "SELECT `id`,@tday,`server`,`instance`,`product`,`core`,`otl`,`licence`,`adapter`, " \
+                 "`frapi`,`fix50`,`fix50sp1`,`fix42` " \
+                 "FROM `current`;"
+
+    for statement in cur.execute(statements, multi=True):
+        pass
 
     logging.debug("Update database with details")
     cur.execute("INSERT INTO `current` (`id`) VALUES ('%s')" % instance_id)
