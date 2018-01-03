@@ -140,7 +140,7 @@ def dbupdate(data):
 
     tables['archive'] = (
         "CREATE TABLE IF NOT EXISTS `archive` ("
-        "`date` DATE NOT NULL,"
+        "`id` SMALLINT NOT NULL,"
         "`date` DATE NOT NULL,"
         "`server` VARCHAR(35) NOT NULL,"
         "`instance` VARCHAR(35) NOT NULL,"
@@ -148,12 +148,15 @@ def dbupdate(data):
         "`core` VARCHAR(35) NOT NULL,"
         "`otl` VARCHAR(35) NOT NULL,"
         "`licence` VARCHAR(35) NOT NULL,"
-        "`adapter` VARCHAR(35) NOT NULL,"
-        "`frapi` VARCHAR(35) NOT NULL)"
+        "`adapter` VARCHAR(5),"
+        "`frapi` VARCHAR(5),"
+        "`fix50` VARCHAR(5),"
+        "`fix50sp1` VARCHAR(5),"
+        "`fix42` VARCHAR(5))"
     )
 
     cnx = mysql.connector.connect(**config)
-    cur = cnx.cursor(buffered=True)
+    cur = cnx.cursor(buffered=False)
 
     logging.debug("Create tables if they do not already exist")
     for table in tables:
@@ -165,16 +168,16 @@ def dbupdate(data):
     for line in cur:
         count.append(line[0])
     if len(count) != 0:
-        instanceid = max(count) + 1
+        instance_id = max(count) + 1
     else:
-        instanceid = 1
-    logging.debug("Set next instanceid to %d", instanceid)
+        instance_id = 1
+    logging.debug("Set next instanceid to %d", instance_id)
 
     logging.debug("Update database with details")
-    cur.execute("INSERT INTO `current` (`id`) VALUES ('%s')" % instanceid)
+    cur.execute("INSERT INTO `current` (`id`) VALUES ('%s')" % instance_id)
     for result in data:
-        cur.execute("UPDATE `current` SET `%s`='%s' WHERE `id` = %s" % (result, data[result][2], instanceid))
-        logging.debug("UPDATE `current` SET `%s`='%s' WHERE `id` = %d sent to the database", result, data[result][2], instanceid)
+        cur.execute("UPDATE `current` SET `%s`='%s' WHERE `id` = %s" % (result, data[result][2], instance_id))
+        logging.debug("UPDATE `current` SET `%s`='%s' WHERE `id` = %d sent to the database", result, data[result][2], instance_id)
 
     cnx.commit()
     cur.close()
