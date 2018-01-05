@@ -5,6 +5,8 @@ import time
 import logging
 import re
 import mysql.connector
+import datetime
+
 
 logging.basicConfig(format='%(asctime)s: %(levelname)s: %(message)s', level=logging.DEBUG)
 host = '172.28.101.10'
@@ -28,54 +30,35 @@ message = \
 
 try:
     s.send(message)
-    logging.info('sending handshake, logging and request')
+    logging.info('sending handshake, login and requests')
 except socket.error:
     logging.error('send failed')
     sys.exit()
 
 
-def receive_data(the_socket, timeout=2):
-    logging.debug('setting socket to none blocking')
-    s.setblocking(0)
-
-    # total data in array
+def receive_data(the_socket):
     total_data = []
 
-    # beginning = time now
-    begin = time.time()
     while 1:
-        # if you got some data, then break after timeout
-        if total_data and time.time() - begin > timeout:
-            break
-
-        # if you got no data at all, wait a little longer, twice the timeout
-        elif time.time() - begin > timeout*2:
-            break
-
-        # receive something
-        try:
-            data = the_socket.recv(8192)
-            if data:
+        data = the_socket.recv(8192)
+        if not re.search(r'result="error"', data):
+            if not re.search(r"</Response>", data):
                 total_data.append(data)
-                # change the beginning time for measurement
-                begin = time.time()
             else:
-                # sleep for sometime to indicate a gap
-                time.sleep(0.1)
-        except:
-            pass
+                total_data.append(data)
+                break
+        else:
+            total_data.append(data)
+            logging.error(total_data)
+            sys.exit()
 
-    # Check successful connection, remove handshake and logging response then join all parts to make xml string
     s.close()
-    if re.match(r'.*success.*', total_data[1]):
-        logging.info('logging successful')
-        total_data.remove(total_data[0])
-        total_data.remove(total_data[0])
-    else:
-        logging.error(total_data[1])
-        sys.exit()
-
-    return ''.join(total_data)
+    logging.info('Connection to analytics successful')
+    total_data.remove(total_data[0])
+    total_data.remove(total_data[0])
+    xml = ''.join(total_data)
+    logging.debug("Receved data: "+xml)
+    return xml
 
 
 def process_data(received_data):
@@ -112,6 +95,8 @@ def process_data(received_data):
 
 
 def dbupdate(data):
+    tday = datetime.date.today().strftime("%Y-%m-%d")
+
     config = {
         'user': 'root',
         'password': '',
@@ -175,26 +160,15 @@ def dbupdate(data):
         instance_id = 1
     logging.debug("Set next instance_id to %d", instance_id)
 
-    # statements = "SET @tday=curdate(); " \
-    #              "INSERT INTO `archive` " \
-    #              "(`id`,`date`,`server`,`instance`,`product`,`core`,`otl`,`licence`,`adapter`,`frapi`,`fix50`, " \
-    #              "`fix50sp1`,`fix42`) " \
-    #              "SELECT `id`,@tday,`server`,`instance`,`product`,`core`,`otl`,`licence`,`adapter`, " \
-    #              "`frapi`,`fix50`,`fix50sp1`,`fix42` " \
-    #              "FROM `current`;"
     statements = "INSERT INTO `archive` " \
                  "(`id`,`date`,`server`,`instance`,`product`,`core`,`otl`,`licence`,`adapter`,`frapi`,`fix50`, " \
                  "`fix50sp1`,`fix42`) " \
-                 "SELECT `id`,'2018-01-03',`server`,`instance`,`product`,`core`,`otl`,`licence`,`adapter`, " \
+                 "SELECT `id`,'%s',`server`,`instance`,`product`,`core`,`otl`,`licence`,`adapter`, " \
                  "`frapi`,`fix50`,`fix50sp1`,`fix42` " \
-                 "FROM `current`;"
+                 "FROM `current`;" % tday
 
-    cur.execute(statements, multi=True)
-    print cur.fetchwarnings()
-    # for y in  x:
-    # #     print y
-    # for statement in cur.execute(statements, multi=True):
-    #     pass
+    logging.debug("archiving database")
+    cur.execute(statements)
 
     logging.debug("Update database with details")
     cur.execute("INSERT INTO `current` (`id`) VALUES ('%s')" % instance_id)

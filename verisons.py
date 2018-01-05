@@ -36,15 +36,11 @@ def collect_ports():
 
     return connections
 
-# collect_ports()
-
-
-def analytics_connection(connections):
-    print connections
 
 
 
+def main():
+    collect_ports()
 
 
-
-analytics_connection(collect_ports())
+print main()
