@@ -109,6 +109,7 @@ def process_data(received_data):
         "frapi": ['FRAPI Logging Enabled: ',
                   ".//Item[@name='Client Adapters']//Item[@name='FRAPI2']//Item[@name='Enabled']"]
     }
+
     # finds the available acceptors and places them in a list called fix_acceptors
     for acceptors in xmlroot.find(".//Item[@name='Client Adapters']/Item[@name='FIX']/Item[@name='Acceptors']"):
         fix_acceptors.append(acceptors.attrib.get('name'))
@@ -223,7 +224,7 @@ def main():
         socket = connect_socket(connections[connection][3], int(connections[connection][4]), connection)
         xml = receive_data(socket)
         data = process_data(xml)
-        dbupdate()
+        dbupdate(data)
 
 
 if __name__ == "__main__":
