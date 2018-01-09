@@ -92,8 +92,8 @@ def receive_data(the_socket):
     return xml
 
 
-def process_data(received_data):
-    logging.info('Collecting server info')
+def process_data(received_data, server_type):
+    logging.info('process_data: Collecting server info')
     fix_acceptors = []
     xmlroot = ET.fromstring(received_data)
     instanceid = 0
@@ -110,13 +110,18 @@ def process_data(received_data):
                   ".//Item[@name='Client Adapters']//Item[@name='FRAPI2']//Item[@name='Enabled']"]
     }
 
-    # finds the available acceptors and places them in a list called fix_acceptors
-    for acceptors in xmlroot.find(".//Item[@name='Client Adapters']/Item[@name='FIX']/Item[@name='Acceptors']"):
-        fix_acceptors.append(acceptors.attrib.get('name'))
-    # Adds available fix acceptors to the data list
-    for acceptor in fix_acceptors:
-        data["%s" % acceptor.lower()] = ["%s Logging Enabled: " % acceptor,
-                                         ".//Item[@name='Client Adapters']//Item[@name='%s']//Item[@name='Enabled']" % acceptor]
+    if server_type == "FrontTrade":
+        # finds the available acceptors and places them in a list called fix_acceptors
+        for acceptors in xmlroot.find(".//Item[@name='Client Adapters']/Item[@name='FIX']/Item[@name='Acceptors']"):
+            fix_acceptors.append(acceptors.attrib.get('name'))
+        # Adds available fix acceptors to the data list
+        for acceptor in fix_acceptors:
+            data["%s" % acceptor.lower()] = ["%s Logging Enabled: " % acceptor,
+                                             ".//Item[@name='Client Adapters']//Item[@name='%s']//Item[@name='Enabled']" % acceptor]
+    else:
+        data["fix42"] = ['Fix42: ', "//Item[@name='Client Adapters']/Item[@name='FIX42']"]
+
+
 
     for instance in data:
         data[instance].append(xmlroot.find(data[instance][1]).attrib.get('value'))
@@ -223,7 +228,7 @@ def main():
     for connection in connections:
         socket = connect_socket(connections[connection][3], int(connections[connection][4]), connection)
         xml = receive_data(socket)
-        data = process_data(xml)
+        data = process_data(xml, connections[connection][1])
         dbupdate(data)
 
 
