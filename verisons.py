@@ -121,8 +121,6 @@ def process_data(received_data, server_type):
     else:
         data["fix42"] = ['Fix42: ', "//Item[@name='Client Adapters']/Item[@name='FIX42']"]
 
-
-
     for instance in data:
         data[instance].append(xmlroot.find(data[instance][1]).attrib.get('value'))
         logging.debug(data[instance][0] + xmlroot.find(data[instance][1]).attrib.get('value'))
