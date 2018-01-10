@@ -53,7 +53,7 @@ def connect_socket(host, port, connection):
     try:
         new_socket.connect((host, port))
     except socket.error as err:
-        logging.debug(err)
+        logging.error(err)
         sys.exit()
 
 
