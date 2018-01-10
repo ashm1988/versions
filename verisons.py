@@ -7,7 +7,7 @@ import socket
 import sys
 import re
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(format='%(asctime)s: %(threadName)s: %(levelname)s: %(message)s', filename='error.log', level=logging.DEBUG)
 FRVersion = "FR4"
 
 
@@ -45,12 +45,17 @@ def connect_socket(host, port, connection):
     try:
         new_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         logging.info('socket created')
-    except AttributeError as err:
+    except socket.error as err:
         logging.error('socket connection: ' + str(err))
         sys.exit()
 
     logging.debug("connecting to %s", connection)
-    new_socket.connect((host, port))
+    try:
+        new_socket.connect((host, port))
+    except socket.error as err:
+        logging.debug(err)
+        sys.exit()
+
 
     message = \
         '<Handshake version=\"2.0\"/>' \
@@ -103,14 +108,14 @@ def process_data(received_data, server_type):
         "product": ['Product: ', ".//Item[@name='Identity']/Item[@name='Description']"],
         "core": ['Core Version: ', ".//Item[@name='Identity']/Item[@name='Version']"],
         "otl": ['OTL Version: ', ".//Item[@name='Exchange Adapters']//Item[@name='Version']"],
-        "licence": ['Licence Expiry: ', ".//Item[@name='Licence']/Item[@name='Expiry']"],
-        "adapter": ['Adapter Logging Enabled: ',
-                    ".//Item[@name='Exchange Adapters']//Item[@name='Configuration']//Item[@name='Enabled']"],
-        "frapi": ['FRAPI Logging Enabled: ',
-                  ".//Item[@name='Client Adapters']//Item[@name='FRAPI2']//Item[@name='Enabled']"]
+        # "licence": ['Licence Expiry: ', ".//Item[@name='Licence']/Item[@name='Expiry']"],
+        # "adapter": ['Adapter Logging Enabled: ',
+        #             ".//Item[@name='Exchange Adapters']//Item[@name='Configuration']//Item[@name='Enabled']"],
+        # "frapi": ['FRAPI Logging Enabled: ',
+        #           ".//Item[@name='Client Adapters']//Item[@name='FRAPI2']//Item[@name='Enabled']"]
     }
 
-    if server_type == "FrontTrade":
+    def fronttrade():
         # finds the available acceptors and places them in a list called fix_acceptors
         for acceptors in xmlroot.find(".//Item[@name='Client Adapters']/Item[@name='FIX']/Item[@name='Acceptors']"):
             fix_acceptors.append(acceptors.attrib.get('name'))
@@ -118,10 +123,11 @@ def process_data(received_data, server_type):
         for acceptor in fix_acceptors:
             data["%s" % acceptor.lower()] = ["%s Logging Enabled: " % acceptor,
                                              ".//Item[@name='Client Adapters']//Item[@name='%s']//Item[@name='Enabled']" % acceptor]
-    else:
-        data["fix42"] = ['Fix42: ', "//Item[@name='Client Adapters']/Item[@name='FIX42']"]
+        else:
+            data["fix42"] = ['Fix42: ', "//Item[@name='Client Adapters']/Item[@name='FIX42']"]
 
     for instance in data:
+        logging.debug("Getting %s", instance)
         data[instance].append(xmlroot.find(data[instance][1]).attrib.get('value'))
         logging.debug(data[instance][0] + xmlroot.find(data[instance][1]).attrib.get('value'))
 
@@ -223,13 +229,18 @@ def main():
                         help="Server Category i.e. Production, TestBed (default: %(default)s")
     args = parser.parse_args()
     connections = collect_ports(args.category)
+
     for connection in connections:
-        socket = connect_socket(connections[connection][3], int(connections[connection][4]), connection)
-        xml = receive_data(socket)
-        data = process_data(xml, connections[connection][1])
-        dbupdate(data)
+        try:
+            socket = connect_socket(connections[connection][3], int(connections[connection][4]), connection)
+            xml = receive_data(socket)
+            data = process_data(xml, connections[connection][1])
+            dbupdate(data)
+        except:
+            logging.debug("%s failed", connection)
+            continue
 
 
 if __name__ == "__main__":
     main()
-
+    # collect_ports("TestBed")
