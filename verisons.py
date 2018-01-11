@@ -7,7 +7,8 @@ import socket
 import sys
 import re
 
-logging.basicConfig(format='%(asctime)s: %(threadName)s: %(levelname)s: %(message)s', filename='error.log', level=logging.DEBUG)
+logging.basicConfig(format='%(asctime)s: %(threadName)s: %(levelname)s: %(message)s', filename='error.log', filemode='w', level=logging.DEBUG)
+# logging.basicConfig(format='%(asctime)s: %(threadName)s: %(levelname)s: %(message)s', level=logging.DEBUG)
 FRVersion = "FR4"
 
 
@@ -18,7 +19,8 @@ def collect_ports(category):
     root = confile.getroot()
     for ConnectionConfiguration in root.findall('ConnectionConfiguration'):
         if ConnectionConfiguration.find("FRVersion").text == FRVersion and \
-                ConnectionConfiguration.find("Category").text == category:
+                ConnectionConfiguration.find("Category").text == category and \
+                ConnectionConfiguration.find("Enabled").text == "true":
             connections[ConnectionConfiguration.find("Name").text] = ConnectionConfiguration.find("Category").text, \
                                                                     ConnectionConfiguration.find("Type").text, \
                                                                     ConnectionConfiguration.find("FRVersion").text, \
@@ -93,7 +95,7 @@ def receive_data(the_socket):
     total_data.remove(total_data[0])
     total_data.remove(total_data[0])
     xml = ''.join(total_data)
-    logging.debug("Receved data: "+xml)
+    # logging.debug("Receved data: "+xml)
     return xml
 
 
@@ -101,21 +103,18 @@ def process_data(received_data, server_type):
     logging.info('process_data: Collecting server info')
     fix_acceptors = []
     xmlroot = ET.fromstring(received_data)
-    instanceid = 0
     data = {
         "server": ['Server: ', ".//Item[@name='System']/Item[@name='Hostname']"],
         "instance": ['Instance name: ', ".//Item[@name='Identity']/Item[@name='Name']"],
         "product": ['Product: ', ".//Item[@name='Identity']/Item[@name='Description']"],
         "core": ['Core Version: ', ".//Item[@name='Identity']/Item[@name='Version']"],
         "otl": ['OTL Version: ', ".//Item[@name='Exchange Adapters']//Item[@name='Version']"],
-        # "licence": ['Licence Expiry: ', ".//Item[@name='Licence']/Item[@name='Expiry']"],
-        # "adapter": ['Adapter Logging Enabled: ',
-        #             ".//Item[@name='Exchange Adapters']//Item[@name='Configuration']//Item[@name='Enabled']"],
-        # "frapi": ['FRAPI Logging Enabled: ',
-        #           ".//Item[@name='Client Adapters']//Item[@name='FRAPI2']//Item[@name='Enabled']"]
+        "licence": ['Licence Expiry: ', ".//Item[@name='Licence']/Item[@name='Expiry']"],
+
     }
 
-    def fronttrade():
+    # if fix acceptors exist add them to the dictionary
+    if xmlroot.find(".//Item[@name='Client Adapters']/Item[@name='FIX']/Item[@name='Acceptors']"):
         # finds the available acceptors and places them in a list called fix_acceptors
         for acceptors in xmlroot.find(".//Item[@name='Client Adapters']/Item[@name='FIX']/Item[@name='Acceptors']"):
             fix_acceptors.append(acceptors.attrib.get('name'))
@@ -123,15 +122,20 @@ def process_data(received_data, server_type):
         for acceptor in fix_acceptors:
             data["%s" % acceptor.lower()] = ["%s Logging Enabled: " % acceptor,
                                              ".//Item[@name='Client Adapters']//Item[@name='%s']//Item[@name='Enabled']" % acceptor]
-        else:
-            data["fix42"] = ['Fix42: ', "//Item[@name='Client Adapters']/Item[@name='FIX42']"]
+        data['adapter'] = ['Adapter Logging Enabled: ',
+                           ".//Item[@name='Exchange Adapters']//Item[@name='Configuration']//Item[@name='Enabled']"]
+        data['frapi'] = ['FRAPI Logging Enabled: ',
+                         ".//Item[@name='Client Adapters']//Item[@name='FRAPI2']//Item[@name='Enabled']"]
 
+    if xmlroot.find(".//Item[@name='Client Adapters']/Item[@name='FIX42']"):
+        data["fix42"] = ['Fix42: ', "//Item[@name='Client Adapters']/Item[@name='FIX42']"]
+
+    # add value to dictionary
     for instance in data:
-        logging.debug("Getting %s", instance)
+        logging.info("Getting %s", instance)
         data[instance].append(xmlroot.find(data[instance][1]).attrib.get('value'))
         logging.debug(data[instance][0] + xmlroot.find(data[instance][1]).attrib.get('value'))
 
-    instanceid += 1
     return data
 
 
@@ -239,6 +243,10 @@ def main():
         except:
             logging.debug("%s failed", connection)
             continue
+        # socket = connect_socket(connections[connection][3], int(connections[connection][4]), connection)
+        # xml = receive_data(socket)
+        # data = process_data(xml, connections[connection][1])
+        # dbupdate(data)
 
 
 if __name__ == "__main__":
