@@ -7,9 +7,16 @@ import socket
 import sys
 import re
 
-logging.basicConfig(format='%(asctime)s: %(threadName)s: %(levelname)s: %(message)s', filename='error.log', filemode='w', level=logging.DEBUG)
+logging.basicConfig(format='%(asctime)s: %(threadName)s: %(levelname)s: %(message)s', filename='error.log', filemode='w', level=logging.INFO)
 # logging.basicConfig(format='%(asctime)s: %(threadName)s: %(levelname)s: %(message)s', level=logging.DEBUG)
 FRVersion = "FR4"
+# db_config = {
+#     'user': 'otsupport',
+#     'password': '0tsupp0rt',
+#     'host': '192.168.105.99',
+#     'database': 'versions',
+#     'autocommit': True,
+# }
 db_config = {
     'user': 'root',
     'password': '',
@@ -20,7 +27,7 @@ db_config = {
 
 
 def collect_ports(category):
-    logging.info('creating connection dictionary from Connections.xml')
+    logging.debug('creating connection dictionary from Connections.xml')
     connections = {}
     confile = ET.parse("Connections.xml")
     root = confile.getroot()
@@ -45,7 +52,7 @@ def collect_ports(category):
     if len(connections) > 0:
         logging.info('Number of connections: %s', len(connections))
     else:
-        logging.warning('No connection details')
+        logging.error('No connection details')
 
     return connections
 
@@ -53,7 +60,7 @@ def collect_ports(category):
 def connect_socket(host, port, connection):
     try:
         new_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        logging.info('socket created')
+        logging.debug('socket created')
     except socket.error as err:
         logging.error('socket connection: ' + str(err))
         sys.exit()
@@ -65,7 +72,6 @@ def connect_socket(host, port, connection):
         logging.error(err)
         sys.exit()
 
-
     message = \
         '<Handshake version=\"2.0\"/>' \
         '<Login username=\"amcfarlane\" passphrase=\"amcfarlane\" encryptMethod=\"none\"/>' \
@@ -73,7 +79,7 @@ def connect_socket(host, port, connection):
 
     try:
         new_socket.send(message)
-        logging.info('sending handshake, login and requests')
+        logging.debug('sending handshake, login and requests')
     except socket.error:
         logging.error('send failed')
         sys.exit()
@@ -98,7 +104,7 @@ def receive_data(the_socket):
             sys.exit()
 
     the_socket.close()
-    logging.info('Connection to analytics successful')
+    logging.debug('Connection to analytics successful and data received')
     total_data.remove(total_data[0])
     total_data.remove(total_data[0])
     xml = ''.join(total_data)
@@ -107,7 +113,7 @@ def receive_data(the_socket):
 
 
 def process_data(received_data):
-    logging.info('process_data: Collecting server info')
+    logging.debug('process_data: Collecting server info')
     fix_acceptors = []
     xmlroot = ET.fromstring(received_data)
     data = {
@@ -117,7 +123,6 @@ def process_data(received_data):
         "core": ['Core Version: ', ".//Item[@name='Identity']/Item[@name='Version']"],
         "otl": ['OTL Version: ', ".//Item[@name='Exchange Adapters']//Item[@name='Version']"],
         "licence": ['Licence Expiry: ', ".//Item[@name='Licence']/Item[@name='Expiry']"],
-
     }
 
     # if fix acceptors exist add them to the dictionary
@@ -134,42 +139,16 @@ def process_data(received_data):
         data['frapi'] = ['FRAPI Logging Enabled: ',
                          ".//Item[@name='Client Adapters']//Item[@name='FRAPI2']//Item[@name='Enabled']"]
 
-
     # add value to dictionary
     for instance in data:
-        # logging.info("Getting %s", instance)
+        logging.debug("Getting %s", instance)
         data[instance].append(xmlroot.find(data[instance][1]).attrib.get('value'))
-        logging.debug(data[instance][0] + xmlroot.find(data[instance][1]).attrib.get('value'))
+        logging.info(data[instance][0] + xmlroot.find(data[instance][1]).attrib.get('value'))
 
     return data
 
 
 def archive_database(config):
-    cnx = mysql.connector.connect(**config)
-    cnx.get_warnings = True
-    cur = cnx.cursor(buffered=False)
-
-    tday = datetime.date.today().strftime("%Y-%m-%d")
-    archive_statements = "INSERT INTO `archive` " \
-                 "(`id`,`date`,`server`,`instance`,`product`,`core`,`otl`,`licence`,`adapter`,`frapi`,`fix50`, " \
-                 "`fix50sp1`,`fix42`) " \
-                 "SELECT `id`,'%s',`server`,`instance`,`product`,`core`,`otl`,`licence`,`adapter`, " \
-                 "`frapi`,`fix50`,`fix50sp1`,`fix42` " \
-                 "FROM `current`;" % tday
-
-    logging.debug("archiving database")
-    cur.execute(archive_statements)
-
-    truncate_statement = "TRUNCATE TABLE `current`"
-    logging.debug("Truncating current table")
-    cur.execute(truncate_statement)
-
-    cnx.commit()
-    logging.debug("committing data")
-    cur.close()
-    cnx.close()
-
-def dbupdate(data, config):
     cnx = mysql.connector.connect(**config)
     cnx.get_warnings = True
     cur = cnx.cursor(buffered=False)
@@ -189,7 +168,8 @@ def dbupdate(data, config):
         "`frapi` VARCHAR(5),"
         "`fix50` VARCHAR(5),"
         "`fix50sp1` VARCHAR(5),"
-        "`fix42` VARCHAR(5))"
+        "`fix50sp1-dc` VARCHAR(5),"
+        "`fix44` VARCHAR(5))"
     )
 
     tables['archive'] = (
@@ -206,12 +186,39 @@ def dbupdate(data, config):
         "`frapi` VARCHAR(5),"
         "`fix50` VARCHAR(5),"
         "`fix50sp1` VARCHAR(5),"
-        "`fix42` VARCHAR(5))"
+        "`fix50sp1-dc` VARCHAR(5),"
+        "`fix44` VARCHAR(5))"
     )
 
     logging.debug("Create tables if they do not already exist")
     for table in tables:
         cur.execute(tables[table])
+
+    tday = datetime.date.today().strftime("%Y-%m-%d")
+    archive_statements = "INSERT INTO `archive` " \
+                         "(`id`,`date`,`server`,`instance`,`product`,`core`,`otl`,`licence`,`adapter`,`frapi`,`fix50`," \
+                         "`fix50sp1`,`fix50sp1-dc`,`fix44`) " \
+                         "SELECT `id`,'%s',`server`,`instance`,`product`,`core`,`otl`,`licence`,`adapter`," \
+                         "`frapi`,`fix50`,`fix50sp1`,`fix50sp1-dc`,`fix44` " \
+                         "FROM `current`;" % tday
+
+    logging.debug("archiving database")
+    cur.execute(archive_statements)
+
+    truncate_statement = "TRUNCATE TABLE `current`"
+    logging.debug("Truncating current table")
+    cur.execute(truncate_statement)
+
+    cnx.commit()
+    logging.debug("committing data")
+    cur.close()
+    cnx.close()
+
+
+def dbupdate(data, config):
+    cnx = mysql.connector.connect(**config)
+    cnx.get_warnings = True
+    cur = cnx.cursor(buffered=False)
 
     logging.debug("Check if there is data in the current table")
     cur.execute("SELECT * FROM current")
@@ -237,6 +244,8 @@ def dbupdate(data, config):
 
 
 def main():
+    failed = 0
+    successful = 0
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--category", default="TestBed", choices=["Production", "TestBed", "BuildOut"],
                         help="Server Category i.e. Production, TestBed (default: %(default)s")
@@ -245,15 +254,27 @@ def main():
     archive_database(db_config)
     for connection in connections:
         try:
+            logging.info('Connecting to %s', connection)
             socket = connect_socket(connections[connection][3], int(connections[connection][4]), connection)
             xml = receive_data(socket)
             data = process_data(xml)
             dbupdate(data, db_config)
+            logging.info("%s Completed", connection)
+            successful += 1
         except:
-            logging.debug("%s failed", connection)
+            logging.error("%s failed", connection)
+            failed += 1
             continue
 
-    logging.info("finished")
+        # socket = connect_socket(connections[connection][3], int(connections[connection][4]), connection)
+        # xml = receive_data(socket)
+        # data = process_data(xml)
+        # dbupdate(data, db_config)
+        # logging.info("%s Completed", connection)
+
+    logging.info("Script finished")
+    logging.info("%s failed", str(failed))
+    logging.info("%s successful", str(successful))
 
 
 if __name__ == "__main__":
