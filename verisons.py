@@ -10,6 +10,13 @@ import re
 logging.basicConfig(format='%(asctime)s: %(threadName)s: %(levelname)s: %(message)s', filename='error.log', filemode='w', level=logging.DEBUG)
 # logging.basicConfig(format='%(asctime)s: %(threadName)s: %(levelname)s: %(message)s', level=logging.DEBUG)
 FRVersion = "FR4"
+db_config = {
+    'user': 'root',
+    'password': '',
+    'host': '127.0.0.1',
+    'database': 'versions',
+    'autocommit': True,
+}
 
 
 def collect_ports(category):
@@ -99,7 +106,7 @@ def receive_data(the_socket):
     return xml
 
 
-def process_data(received_data, server_type):
+def process_data(received_data):
     logging.info('process_data: Collecting server info')
     fix_acceptors = []
     xmlroot = ET.fromstring(received_data)
@@ -127,28 +134,45 @@ def process_data(received_data, server_type):
         data['frapi'] = ['FRAPI Logging Enabled: ',
                          ".//Item[@name='Client Adapters']//Item[@name='FRAPI2']//Item[@name='Enabled']"]
 
-    if xmlroot.find(".//Item[@name='Client Adapters']/Item[@name='FIX42']"):
-        data["fix42"] = ['Fix42: ', "//Item[@name='Client Adapters']/Item[@name='FIX42']"]
 
     # add value to dictionary
     for instance in data:
-        logging.info("Getting %s", instance)
+        # logging.info("Getting %s", instance)
         data[instance].append(xmlroot.find(data[instance][1]).attrib.get('value'))
         logging.debug(data[instance][0] + xmlroot.find(data[instance][1]).attrib.get('value'))
 
     return data
 
 
-def dbupdate(data):
-    tday = datetime.date.today().strftime("%Y-%m-%d")
+def archive_database(config):
+    cnx = mysql.connector.connect(**config)
+    cnx.get_warnings = True
+    cur = cnx.cursor(buffered=False)
 
-    config = {
-        'user': 'root',
-        'password': '',
-        'host': '127.0.0.1',
-        'database': 'versions',
-        'autocommit': True,
-    }
+    tday = datetime.date.today().strftime("%Y-%m-%d")
+    archive_statements = "INSERT INTO `archive` " \
+                 "(`id`,`date`,`server`,`instance`,`product`,`core`,`otl`,`licence`,`adapter`,`frapi`,`fix50`, " \
+                 "`fix50sp1`,`fix42`) " \
+                 "SELECT `id`,'%s',`server`,`instance`,`product`,`core`,`otl`,`licence`,`adapter`, " \
+                 "`frapi`,`fix50`,`fix50sp1`,`fix42` " \
+                 "FROM `current`;" % tday
+
+    logging.debug("archiving database")
+    cur.execute(archive_statements)
+
+    truncate_statement = "TRUNCATE TABLE `current`"
+    logging.debug("Truncating current table")
+    cur.execute(truncate_statement)
+
+    cnx.commit()
+    logging.debug("committing data")
+    cur.close()
+    cnx.close()
+
+def dbupdate(data, config):
+    cnx = mysql.connector.connect(**config)
+    cnx.get_warnings = True
+    cur = cnx.cursor(buffered=False)
 
     tables = {}
 
@@ -185,11 +209,6 @@ def dbupdate(data):
         "`fix42` VARCHAR(5))"
     )
 
-    cnx = mysql.connector.connect(**config)
-    cnx.get_warnings = True
-    cur = cnx.cursor(buffered=False)
-
-
     logging.debug("Create tables if they do not already exist")
     for table in tables:
         cur.execute(tables[table])
@@ -204,16 +223,6 @@ def dbupdate(data):
     else:
         instance_id = 1
     logging.debug("Set next instance_id to %d", instance_id)
-
-    # statements = "INSERT INTO `archive` " \
-    #              "(`id`,`date`,`server`,`instance`,`product`,`core`,`otl`,`licence`,`adapter`,`frapi`,`fix50`, " \
-    #              "`fix50sp1`,`fix42`) " \
-    #              "SELECT `id`,'%s',`server`,`instance`,`product`,`core`,`otl`,`licence`,`adapter`, " \
-    #              "`frapi`,`fix50`,`fix50sp1`,`fix42` " \
-    #              "FROM `current`;" % tday
-    #
-    # logging.debug("archiving database")
-    # cur.execute(statements)
 
     logging.debug("Update database with details")
     cur.execute("INSERT INTO `current` (`id`) VALUES ('%s')" % instance_id)
@@ -233,20 +242,18 @@ def main():
                         help="Server Category i.e. Production, TestBed (default: %(default)s")
     args = parser.parse_args()
     connections = collect_ports(args.category)
-
+    archive_database(db_config)
     for connection in connections:
         try:
             socket = connect_socket(connections[connection][3], int(connections[connection][4]), connection)
             xml = receive_data(socket)
-            data = process_data(xml, connections[connection][1])
-            dbupdate(data)
+            data = process_data(xml)
+            dbupdate(data, db_config)
         except:
             logging.debug("%s failed", connection)
             continue
-        # socket = connect_socket(connections[connection][3], int(connections[connection][4]), connection)
-        # xml = receive_data(socket)
-        # data = process_data(xml, connections[connection][1])
-        # dbupdate(data)
+
+    logging.info("finished")
 
 
 if __name__ == "__main__":
