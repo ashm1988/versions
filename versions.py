@@ -7,23 +7,23 @@ import socket
 import sys
 import re
 
-logging.basicConfig(format='%(asctime)s: %(levelname)s: %(message)s', filename='error.log', filemode='w', level=logging.INFO)
-# logging.basicConfig(format='%(asctime)s: %(threadName)s: %(levelname)s: %(message)s', level=logging.DEBUG)
+# logging.basicConfig(format='%(asctime)s: %(levelname)s: %(message)s', filename='error.log', filemode='w', level=logging.INFO)
+logging.basicConfig(format='%(asctime)s: %(levelname)s: %(message)s', level=logging.DEBUG)
 FRVersion = "FR4"
-db_config = {
-    'user': 'otsupport',
-    'password': '0tsupp0rt',
-    'host': '192.168.105.99',
-    'database': 'versions',
-    'autocommit': True,
-}
 # db_config = {
-#     'user': 'root',
-#     'password': '',
-#     'host': '127.0.0.1',
+#     'user': 'otsupport',
+#     'password': '0tsupp0rt',
+#     'host': '192.168.105.99',
 #     'database': 'versions',
 #     'autocommit': True,
 # }
+db_config = {
+    'user': 'root',
+    'password': '',
+    'host': '127.0.0.1',
+    'database': 'versions',
+    'autocommit': True,
+}
 
 
 def collect_ports(category, connection_file):
@@ -111,10 +111,11 @@ def receive_data(the_socket):
 
     the_socket.close()
     logging.debug('Connection to analytics successful and data received')
-    total_data.remove(total_data[0])
-    total_data.remove(total_data[0])
+    del total_data[:2]
+    # total_data.remove(total_data[0])
+    # total_data.remove(total_data[0])
     xml = ''.join(total_data)
-    # logging.debug("Receved data: "+xml)
+    # logging.debug("Received data: "+xml)
     return xml
 
 
@@ -132,7 +133,8 @@ def process_data(received_data):
     }
 
     # if fix acceptors exist add them to the dictionary
-    if xmlroot.find(".//Item[@name='Client Adapters']/Item[@name='FIX']/Item[@name='Acceptors']"):
+    if re.search(r'4.1', xmlroot.find(data['core'][1]).attrib.get('value')) and \
+            re.search(r'FrontTrade', xmlroot.find(data['product'][1]).attrib.get('value')):
         # finds the available acceptors and places them in a list called fix_acceptors
         for acceptors in xmlroot.find(".//Item[@name='Client Adapters']/Item[@name='FIX']/Item[@name='Acceptors']"):
             fix_acceptors.append(acceptors.attrib.get('name'))
@@ -140,10 +142,10 @@ def process_data(received_data):
         for acceptor in fix_acceptors:
             data["%s" % acceptor.lower()] = ["%s Logging Enabled: " % acceptor,
                                              ".//Item[@name='Client Adapters']//Item[@name='%s']//Item[@name='Enabled']" % acceptor]
-        data['adapter'] = ['Adapter Logging Enabled: ',
-                           ".//Item[@name='Exchange Adapters']//Item[@name='Configuration']//Item[@name='Enabled']"]
         data['frapi'] = ['FRAPI Logging Enabled: ',
                          ".//Item[@name='Client Adapters']//Item[@name='FRAPI2']//Item[@name='Enabled']"]
+        data['adapter'] = ['Adapter Logging Enabled: ',
+                           ".//Item[@name='Exchange Adapters']//Item[@name='Configuration']//Item[@name='Enabled']"]
 
     # add value to dictionary
     for instance in data:
@@ -175,7 +177,8 @@ def archive_database(config):
         "`fix50` VARCHAR(5),"
         "`fix50sp1` VARCHAR(5),"
         "`fix50sp1-dc` VARCHAR(5),"
-        "`fix44` VARCHAR(5))"
+        "`fix44` VARCHAR(5),"
+        "`fix44-dc` VARCHAR(5))"
     )
 
     tables['archive'] = (
@@ -193,7 +196,8 @@ def archive_database(config):
         "`fix50` VARCHAR(5),"
         "`fix50sp1` VARCHAR(5),"
         "`fix50sp1-dc` VARCHAR(5),"
-        "`fix44` VARCHAR(5))"
+        "`fix44` VARCHAR(5),"
+        "`fix44-dc` VARCHAR(5))"
     )
 
     logging.debug("Create tables if they do not already exist")
@@ -272,12 +276,6 @@ def main():
             logging.error("%s failed", connection)
             failed += 1
             continue
-
-        # socket = connect_socket(connections[connection][3], int(connections[connection][4]), connection)
-        # xml = receive_data(socket)
-        # data = process_data(xml)
-        # dbupdate(data, db_config)
-        # logging.info("%s Completed", connection)
 
     logging.info("Script finished")
     logging.info("%s failed", str(failed))
