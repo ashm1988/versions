@@ -7,30 +7,32 @@ import socket
 import sys
 import re
 
-logging.basicConfig(format='%(asctime)s: %(threadName)s: %(levelname)s: %(message)s', filename='error.log', filemode='w', level=logging.INFO)
+logging.basicConfig(format='%(asctime)s: %(levelname)s: %(message)s', filename='error.log', filemode='w', level=logging.INFO)
 # logging.basicConfig(format='%(asctime)s: %(threadName)s: %(levelname)s: %(message)s', level=logging.DEBUG)
 FRVersion = "FR4"
-# db_config = {
-#     'user': 'otsupport',
-#     'password': '0tsupp0rt',
-#     'host': '192.168.105.99',
-#     'database': 'versions',
-#     'autocommit': True,
-# }
 db_config = {
-    'user': 'root',
-    'password': '',
-    'host': '127.0.0.1',
+    'user': 'otsupport',
+    'password': '0tsupp0rt',
+    'host': '192.168.105.99',
     'database': 'versions',
     'autocommit': True,
 }
+# db_config = {
+#     'user': 'root',
+#     'password': '',
+#     'host': '127.0.0.1',
+#     'database': 'versions',
+#     'autocommit': True,
+# }
 
 
-def collect_ports(category):
+def collect_ports(category, connection_file):
+    """ Collects the below data from the Connections xml """
     logging.debug('creating connection dictionary from Connections.xml')
     connections = {}
-    confile = ET.parse("Connections.xml")
+    confile = ET.parse(connection_file)
     root = confile.getroot()
+    # Creates a dictionary of connections
     for ConnectionConfiguration in root.findall('ConnectionConfiguration'):
         if ConnectionConfiguration.find("FRVersion").text == FRVersion and \
                 ConnectionConfiguration.find("Category").text == category and \
@@ -43,12 +45,12 @@ def collect_ports(category):
                                                                     ConnectionConfiguration.find("Username").text, \
                                                                     ConnectionConfiguration.find("Password").text
 
-    # """ list connections saved in debug logger"""
+    # log all connections
     for server in connections:
         if connections[server][0] == category and connections[server][2] == FRVersion:
             logging.debug('Connections: %s %s', server, connections[server])
 
-    # """ Count connections """
+    # Count connections and log
     if len(connections) > 0:
         logging.info('Number of connections: %s', len(connections))
     else:
@@ -58,6 +60,8 @@ def collect_ports(category):
 
 
 def connect_socket(host, port, connection):
+    """ Creates a socket connection, connects to the connections in the dictionary and sends log on request """
+    # try and make a socket connection
     try:
         new_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         logging.debug('socket created')
@@ -65,6 +69,7 @@ def connect_socket(host, port, connection):
         logging.error('socket connection: ' + str(err))
         sys.exit()
 
+    # Connect to the server
     logging.debug("connecting to %s", connection)
     try:
         new_socket.connect((host, port))
@@ -77,6 +82,7 @@ def connect_socket(host, port, connection):
         '<Login username=\"amcfarlane\" passphrase=\"amcfarlane\" encryptMethod=\"none\"/>' \
         '<Request updateType=\"snapshot\" type=\"items\"></Request>'
 
+    # Send log on message
     try:
         new_socket.send(message)
         logging.debug('sending handshake, login and requests')
@@ -249,8 +255,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--category", default="TestBed", choices=["Production", "TestBed", "BuildOut"],
                         help="Server Category i.e. Production, TestBed (default: %(default)s")
+    parser.add_argument("-f", "--connection_file", default="Connections.xml", help="Path to Connections.xml")
     args = parser.parse_args()
-    connections = collect_ports(args.category)
+    connections = collect_ports(args.category, args.connection_file)
     archive_database(db_config)
     for connection in connections:
         try:
